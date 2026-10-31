@@ -17,8 +17,9 @@
   // margin：最善手からこの点差以内の手をランダムに選ぶ（手加減）
   // blunder：この確率で、まったく適当な手を指す
   // quiet：駒の取り合いを先読みしない（取り返されることに気づかない）
+  // checks：王手のチャンスは逃さない（詰ませられれば詰ませ、そうでなくても王手をかける）
   const LEVELS = {
-    beginner: { depth: 1, time: 200, margin: 900, blunder: 0.6, quiet: true },
+    beginner: { depth: 1, time: 200, margin: 900, blunder: 0.6, quiet: true, checks: true },
     easy: { depth: 1, time: 400, margin: 260, blunder: 0.2 },
     normal: { depth: 2, time: 1200, margin: 40, blunder: 0 },
     hard: { depth: 4, time: 2500, margin: 0, blunder: 0 },
@@ -182,6 +183,21 @@
     const root = E.legalRaw(S.b, S.h, side, true, false);
     if (!root.length) return null;
     if (root.length === 1) return root[0];
+    if (L.checks) {
+      // 詰み → 取られない王手 → 取られる王手 の順に探し、見つかった中から適当に選ぶ
+      const mates = [], safe = [], risky = [];
+      for (const m of root) {
+        const cap = doMove(S, side, m);
+        if (attacked(S.b, S.k[1 - side], side)) {
+          if (!E.legalRaw(S.b, S.h, 1 - side, true, true).length) mates.push(m);
+          else if (!attacked(S.b, (m >> 7) & 127, 1 - side)) safe.push(m);
+          else risky.push(m);
+        }
+        undoMove(S, side, m, cap);
+      }
+      const pool = mates.length ? mates : safe.length ? safe : risky;
+      if (pool.length) return pool[(Math.random() * pool.length) | 0];
+    }
     if (L.blunder && Math.random() < L.blunder) return root[(Math.random() * root.length) | 0];
 
     let order = ordered(S, root, 0);
