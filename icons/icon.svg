@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dca0"/><stop offset="1" stop-color="#e3b462"/></linearGradient>
+    <linearGradient id="w" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#fff3d1"/><stop offset="1" stop-color="#ecc77e"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <polygon points="256,92 370,136 400,428 112,428 142,136" fill="url(#w)" stroke="#2563eb" stroke-width="18" stroke-linejoin="round"/>
+  <g fill="#2563eb">
+    <circle cx="256" cy="48" r="22"/><circle cx="460" cy="256" r="22"/><circle cx="52" cy="256" r="22"/><circle cx="256" cy="476" r="22"/>
+    <circle cx="420" cy="74" r="20"/><circle cx="92" cy="74" r="20"/>
+  </g>
+  <text x="256" y="300" font-family="'Noto Serif JP','Hiragino Mincho ProN','Yu Mincho',serif" font-weight="900" font-size="190" text-anchor="middle" dominant-baseline="central" fill="#24170a">将</text>
+</svg>

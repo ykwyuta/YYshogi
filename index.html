@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>うごきがみえる将棋</title>
+  <meta name="description" content="こまの うごきが みえるから、はじめてでも あそべる 将棋。スマホで CPU や ともだちと たいせんできます。">
+  <meta name="theme-color" content="#f6e3bd">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="将棋">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700;900&family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 駒・図で共有する SVG の部品 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="wood" x1="0" y1="0" x2="0.4" y2="1">
+        <stop offset="0" stop-color="#fff3d1"/>
+        <stop offset="1" stop-color="#ecc77e"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <h1 class="title"><span class="t-sub">うごきがみえる</span><span class="t-main">将棋</span></h1>
+    <nav class="top-actions">
+      <button id="btn-guide" type="button" class="chip">こまの うごき</button>
+      <button id="btn-menu" type="button" class="chip">メニュー</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section class="game" aria-label="対局">
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+      <div class="player" id="player-top"></div>
+      <div class="board-wrap">
+        <div class="files" id="files"></div>
+        <div class="board-row">
+          <div id="board" class="board" role="grid" aria-label="将棋盤"></div>
+          <div class="ranks" id="ranks"></div>
+        </div>
+      </div>
+      <div class="player" id="player-bottom"></div>
+      <div class="controls">
+        <button id="btn-hint" type="button" class="big hint">ヒント</button>
+        <button id="btn-undo" type="button" class="big">まった</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="info" id="info"></div>
+      <details class="kifu-box">
+        <summary>きふ（これまでの 手）</summary>
+        <ol id="kifu"></ol>
+      </details>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+
+  <dialog id="dlg-new">
+    <form method="dialog" class="dlg">
+      <h2>あたらしい ゲーム</h2>
+      <p class="welcome" id="welcome">こまを タッチすると、うごける ところが ひかるよ。<br>こまの うごきを おぼえて いなくても だいじょうぶ！</p>
+      <fieldset>
+        <legend>だれと あそぶ？</legend>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="cpu" checked><span>CPU と たいせん</span></label>
+          <label><input type="radio" name="mode" value="two"><span>ふたりで たいせん</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="cpu-only">
+        <legend>CPU の つよさ</legend>
+        <div class="seg">
+          <label><input type="radio" name="level" value="easy" checked><span>よわい</span></label>
+          <label><input type="radio" name="level" value="normal"><span>ふつう</span></label>
+          <label><input type="radio" name="level" value="hard"><span>つよい</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="cpu-only">
+        <legend>じゅんばん</legend>
+        <div class="seg">
+          <label><input type="radio" name="order" value="first" checked><span>あなたが さき</span></label>
+          <label><input type="radio" name="order" value="second"><span>CPU が さき</span></label>
+          <label><input type="radio" name="order" value="random"><span>おまかせ</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend id="hc-legend">ハンデ（CPU の こまを へらす）</legend>
+        <select name="handicap" id="sel-handicap"></select>
+      </fieldset>
+      <div class="dlg-buttons">
+        <button value="cancel" type="submit" id="btn-new-cancel">やめる</button>
+        <button value="ok" class="primary" type="submit">はじめる！</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-menu">
+    <form method="dialog" class="dlg menu">
+      <h2>メニュー</h2>
+      <button value="new" type="submit" class="primary">あたらしく はじめる</button>
+      <button value="howto" type="submit">あそびかた</button>
+      <button value="guide" type="submit">こまの うごき</button>
+      <button value="settings" type="submit">せってい</button>
+      <button value="resign" type="submit" class="danger" id="btn-resign">こうさんする</button>
+      <button value="close" type="submit">とじる</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-guide">
+    <form method="dialog" class="dlg wide">
+      <h2>こまの うごき</h2>
+      <p class="legend-line"><span class="lg lg-step"></span> 1マス うごける　<span class="lg lg-slide"></span> どこまでも うごける　<span class="lg lg-jump"></span> とびこえて ジャンプ</p>
+      <div class="guide-grid" id="guide-base"></div>
+      <h3>なる（成る）と パワーアップ！</h3>
+      <p>あいての じんち（あいてがわの 3だん）に はいったり、そこから でたり すると、こまを うらがえして「なる」ことが できるよ。金と 王は なれないよ。</p>
+      <div class="guide-grid" id="guide-promo"></div>
+      <div class="dlg-buttons"><button class="primary" value="close" type="submit">とじる</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-howto">
+    <form method="dialog" class="dlg wide howto">
+      <h2>あそびかた</h2>
+      <section>
+        <h3>かちかた</h3>
+        <p>あいての <b>王さま</b>を つかまえたら かち！（どこにも にげられなく することを「つみ」と いうよ）</p>
+      </section>
+      <section>
+        <h3>じゅんばんに 1回ずつ</h3>
+        <ol>
+          <li>うごかしたい じぶんの こまを タッチ。</li>
+          <li><span class="lg lg-dot"></span> の ところに うごかせるよ。<span class="lg lg-cap"></span> は あいての こまが とれる ところ。</li>
+          <li>うごかしたい ところを タッチすると うごくよ。</li>
+        </ol>
+      </section>
+      <section>
+        <h3>とった こまは じぶんの もの</h3>
+        <p>とった こまは「もちごま」に なって、すきな あいている ところに <b>おける（打てる）</b>よ。もちごまを タッチすると、おける ところが ひかるよ。</p>
+      </section>
+      <section>
+        <h3>なる（成る）</h3>
+        <p>あいての じんち（あいてがわの 3だん）に はいると「なりますか？」と きかれるよ。なると つよく なる こまが おおいよ。</p>
+      </section>
+      <section>
+        <h3>王手（おうて）</h3>
+        <p>王さまが ねらわれている ことを「王手」と いうよ。王手を されたら、にげるか、あいだに こまを おくか、ねらっている こまを とろう。</p>
+      </section>
+      <section>
+        <h3>やっては いけない こと（はんそく）</h3>
+        <p>このゲームでは はんそくの 手は さいしょから えらべないように なっているので あんしんしてね。</p>
+        <ul>
+          <li><b>二歩（にふ）</b>：おなじ たての れつに、じぶんの 歩を 2まい おく こと。</li>
+          <li><b>うちふづめ</b>：歩を「打って」王さまを つみに する こと。（うごかした 歩なら OK）</li>
+          <li><b>うごけない ところ</b>に こまを おく こと（いちばん おくの 歩・香、おくから 2だんの 桂）。</li>
+          <li>じぶんの 王さまが とられる ところに うごく こと。</li>
+        </ul>
+      </section>
+      <section>
+        <h3>おたすけ きのう</h3>
+        <ul>
+          <li><b>うごきマーク</b>：こまの まわりの <span class="lg lg-step"></span><span class="lg lg-slide"></span> が うごける ほうこうだよ。</li>
+          <li><b>あぶないマーク</b>：<span class="lg lg-warn">!</span> は そこに いくと とられちゃうかも、という しるし。</li>
+          <li><b>あいての こまを タッチ</b>すると、その こまが うごける ところが オレンジで みえるよ。</li>
+          <li><b>ヒント</b>：まよったら おしてみよう。おすすめの 手を おしえて くれるよ。</li>
+          <li><b>まった</b>：まちがえたら、1手 もどせるよ。</li>
+        </ul>
+      </section>
+      <div class="dlg-buttons"><button class="primary" value="close" type="submit">わかった！</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-settings">
+    <form method="dialog" class="dlg">
+      <h2>せってい</h2>
+      <label class="toggle"><input type="checkbox" name="guide"><span>うごきマーク（こまの まわりの ● ▲）</span></label>
+      <label class="toggle"><input type="checkbox" name="danger"><span>あぶないマーク（とられそうな ところに ！）</span></label>
+      <label class="toggle"><input type="checkbox" name="furi"><span>こまに よみがなを つける（ばんが おおきい とき）</span></label>
+      <label class="toggle"><input type="checkbox" name="sound"><span>おと</span></label>
+      <div class="dlg-buttons"><button class="primary" value="close" type="submit">とじる</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-promote">
+    <form method="dialog" class="dlg promote">
+      <h2>なりますか？</h2>
+      <div class="promo-choices" id="promo-choices"></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-result">
+    <form method="dialog" class="dlg result">
+      <h2 id="result-title"></h2>
+      <p id="result-text"></p>
+      <div class="dlg-buttons">
+        <button value="close" type="submit">ばんめんを みる</button>
+        <button value="undo" type="submit" id="btn-result-undo">まった</button>
+        <button value="new" class="primary" type="submit">もういちど</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/rules.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
