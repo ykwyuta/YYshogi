@@ -16,7 +16,9 @@
 
   // margin：最善手からこの点差以内の手をランダムに選ぶ（手加減）
   // blunder：この確率で、まったく適当な手を指す
+  // quiet：駒の取り合いを先読みしない（取り返されることに気づかない）
   const LEVELS = {
+    beginner: { depth: 1, time: 200, margin: 900, blunder: 0.6, quiet: true },
     easy: { depth: 1, time: 400, margin: 260, blunder: 0.2 },
     normal: { depth: 2, time: 1200, margin: 40, blunder: 0 },
     hard: { depth: 4, time: 2500, margin: 0, blunder: 0 },
@@ -109,6 +111,7 @@
   // pawnDrop：直前の手が歩を打つ手だったか（打ち歩詰めは打った側の反則負け）
   function qsearch(S, side, alpha, beta, ply, qd, pawnDrop) {
     if (tick(S)) return 0;
+    if (S.quiet) return evaluate(S, side);
     const inChk = attacked(S.b, S.k[side], 1 - side);
     const evasions = inChk && qd < 3;
     let best = -INF;
@@ -173,7 +176,7 @@
     const L = LEVELS[levelName] || LEVELS.normal;
     const S = {
       b: Int8Array.from(board), h: Int8Array.from(hands), k: [E.kingSq(board, 0), E.kingSq(board, 1)],
-      nodes: 0, deadline: Date.now() + L.time, stop: false,
+      nodes: 0, deadline: Date.now() + L.time, stop: false, quiet: !!L.quiet,
       killers: new Int32Array(128), hist: new Int32Array(32768),
     };
     const root = E.legalRaw(S.b, S.h, side, true, false);

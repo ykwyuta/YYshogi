@@ -17,7 +17,7 @@
     moves: [],
     mode: 'cpu',        // 'cpu' | 'two' | 'tsume'
     human: [true, false],
-    level: 'easy',
+    level: 'beginner',
     handicap: 'none',
     flip: false,        // 後手を下に表示する
     sel: null,          // {kind:'board', sq} | {kind:'hand', side, t} | {kind:'look', sq}
@@ -212,7 +212,7 @@
     } else if (g && Array.isArray(g.moves)) {
       app.mode = g.mode === 'two' ? 'two' : 'cpu';
       app.human = g.human || [true, false];
-      app.level = AI.LEVELS[g.level] ? g.level : 'easy';
+      app.level = AI.LEVELS[g.level] ? g.level : 'beginner';
       app.handicap = E.HANDICAPS[g.handicap] ? g.handicap : 'none';
       app.flip = !!g.flip;
       rebuild(g.moves);
@@ -220,7 +220,7 @@
       render();
       if (app.G.winner === null) proceed();
     } else {
-      startGame({ mode: 'cpu', level: 'easy', order: 'first', handicap: 'none' }, true);
+      startGame({ mode: 'cpu', level: 'beginner', order: 'first', handicap: 'none' }, true);
       openNew(true);
     }
   }
@@ -265,7 +265,7 @@
     app.tsume = null;
     document.body.classList.remove('tsume-mode');
     app.mode = o.mode;
-    app.level = o.level || 'easy';
+    app.level = o.level || 'beginner';
     app.handicap = o.handicap || 'none';
     if (o.mode === 'cpu') {
       app.human = o.order === 'second' ? [false, true] : [true, false];
