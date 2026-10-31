@@ -173,7 +173,10 @@
     });
     $('dlg-settings').addEventListener('close', () => {
       const f = $('dlg-settings').querySelector('form');
+      const wasOn = app.settings.sound;
       for (const k of Object.keys(app.settings)) app.settings[k] = f[k].checked;
+      if (!app.settings.sound && keepAlive) keepAlive.pause();
+      if (app.settings.sound && !wasOn) { unlockAudio(); sound('move'); }
       applySettings();
       save();
       render();
@@ -588,7 +591,66 @@
     toastTimer = setTimeout(() => { el.className = 'toast'; }, 1800);
   }
 
-  let actx = null;
+  // ---------- 音 ----------
+  // iPhone / iPad の Safari は、(1) タッチの中で音を「解錠」しないと AudioContext が止まったまま、
+  // (2) マナーモード（消音スイッチ）だと Web Audio が鳴らない。その両方に対応する。
+  let actx = null, unlocked = false, keepAlive = null;
+
+  function audioCtx() {
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      actx = new AC();
+    }
+    return actx;
+  }
+
+  // ほぼ無音の WAV（0.1 秒）。古い iOS で、メディア再生扱いにしてマナーモードでも鳴らすために流す
+  function silentWavURL() {
+    const n = 2205, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 22050, true); v.setUint32(28, 44100, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, n * 2, true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+
+  function unlockAudio() {
+    if (!app.settings.sound) return;
+    try {
+      // iOS 17 以降：マナーモードでも鳴らす（AudioContext を作る前に設定する）
+      if (!unlocked && navigator.audioSession) navigator.audioSession.type = 'playback';
+    } catch (e) { /* 対応していないブラウザ */ }
+    const ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      if (!unlocked) {
+        unlocked = true;
+        // 無音を 1 回鳴らすと、iOS で音が出せる状態になる
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+        if (!navigator.audioSession && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document) {
+          // それより前の iOS：無音の音声を流してメディア再生扱いにする
+          keepAlive = new Audio(silentWavURL());
+          keepAlive.loop = true;
+          keepAlive.setAttribute('playsinline', '');
+        }
+      }
+      if (keepAlive && keepAlive.paused && !document.hidden) keepAlive.play().catch(() => {});
+    } catch (e) { /* 音が出せない環境では鳴らさない */ }
+  }
+  for (const ev of ['touchend', 'pointerdown', 'click', 'keydown']) {
+    document.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (keepAlive) keepAlive.pause(); }
+    else if (actx && actx.state !== 'running') actx.resume().catch(() => {});
+  });
+
   function tone(freq, start, dur, type, vol) {
     const t0 = actx.currentTime + start;
     const o = actx.createOscillator();
@@ -605,8 +667,17 @@
   function sound(kind) {
     if (!app.settings.sound) return;
     try {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      if (actx.state === 'suspended') actx.resume();
+      if (!audioCtx()) return;
+      // 止まっていたら再開してから鳴らす（iOS は電話や別アプリのあと 'interrupted' になる）
+      if (actx.state !== 'running') {
+        actx.resume().then(() => play(kind)).catch(() => {});
+        return;
+      }
+      play(kind);
+    } catch (e) { /* 音が出せない環境では鳴らさない */ }
+  }
+  function play(kind) {
+    try {
       if (kind === 'move') {
         const o = tone(900, 0, 0.09, 'triangle', 0.3);
         o.frequency.exponentialRampToValueAtTime(160, actx.currentTime + 0.08);
@@ -1037,6 +1108,7 @@
     toast('これで つみ！');
   }
 
+  app.audioState = () => (actx ? actx.state : 'none');
   window.ShogiApp = app; // デバッグ用
   document.addEventListener('DOMContentLoaded', init);
 })();
