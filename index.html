@@ -31,6 +31,7 @@
   <header class="topbar">
     <h1 class="title"><span class="t-sub">うごきがみえる</span><span class="t-main">将棋</span></h1>
     <nav class="top-actions">
+      <button id="btn-tsume" type="button" class="chip tsume-chip">つめしょうぎ</button>
       <button id="btn-guide" type="button" class="chip">こまの うごき</button>
       <button id="btn-menu" type="button" class="chip">メニュー</button>
     </nav>
@@ -51,6 +52,10 @@
       <div class="controls">
         <button id="btn-hint" type="button" class="big hint">ヒント</button>
         <button id="btn-undo" type="button" class="big">まった</button>
+      </div>
+      <div class="controls ts-controls">
+        <button id="btn-ts-retry" type="button" class="big small">やりなおす</button>
+        <button id="btn-ts-answer" type="button" class="big small">こたえを みる</button>
       </div>
     </section>
 
@@ -108,6 +113,7 @@
     <form method="dialog" class="dlg menu">
       <h2>メニュー</h2>
       <button value="new" type="submit" class="primary">あたらしく はじめる</button>
+      <button value="tsume" type="submit">つめしょうぎ（50もん）</button>
       <button value="howto" type="submit">あそびかた</button>
       <button value="guide" type="submit">こまの うごき</button>
       <button value="settings" type="submit">せってい</button>
@@ -197,6 +203,19 @@
     </form>
   </dialog>
 
+  <dialog id="dlg-tsume">
+    <form method="dialog" class="dlg wide">
+      <h2>つめしょうぎ</h2>
+      <p>王手を つづけて、きめられた 手数で 王さまを つかまえよう！ あいての 王さまは のこりの こまを ぜんぶ もっていて、いちばん ながく にげる 手を さしてくるよ。</p>
+      <div id="tsume-list"></div>
+      <div class="dlg-buttons"><button value="close" type="submit">とじる</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-tsume-result">
+    <form method="dialog" class="dlg ts-result" id="tsume-result"></form>
+  </dialog>
+
   <dialog id="dlg-result">
     <form method="dialog" class="dlg result">
       <h2 id="result-title"></h2>
@@ -211,6 +230,8 @@
 
   <script src="js/rules.js"></script>
   <script src="js/ai.js"></script>
+  <script src="js/tsume.js"></script>
+  <script src="js/tsume-data.js"></script>
   <script src="js/ui.js"></script>
 </body>
 </html>

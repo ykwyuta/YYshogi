@@ -5,6 +5,8 @@
   'use strict';
   const E = window.Engine;
   const AI = window.AI;
+  const TS = window.Tsume;
+  const PROBS = window.TSUME_PROBLEMS || [];
   const P = E.PIECES;
   const $ = id => document.getElementById(id);
   const STORE = 'yyshogi.v1';
@@ -13,7 +15,7 @@
     G: null,
     states: [],         // states[k] = k 手目のあとの局面（まった用）
     moves: [],
-    mode: 'cpu',        // 'cpu' | 'two'
+    mode: 'cpu',        // 'cpu' | 'two' | 'tsume'
     human: [true, false],
     level: 'easy',
     handicap: 'none',
@@ -26,6 +28,8 @@
     token: 0,           // 新しいゲームやまったで、古い CPU の思考結果を捨てるため
     anim: null,
     settings: { guide: true, danger: true, furi: true, sound: true },
+    tsume: null,        // 詰将棋中：{ idx, solver, failed, demo }
+    tsumeDone: {},      // クリアした問題（番号 → true）
   };
 
   const cells = [];
@@ -36,7 +40,8 @@
     try {
       localStorage.setItem(STORE, JSON.stringify({
         settings: app.settings,
-        game: { mode: app.mode, human: app.human, level: app.level, handicap: app.handicap, flip: app.flip, moves: app.moves },
+        tsumeDone: app.tsumeDone,
+        game: { mode: app.mode, human: app.human, level: app.level, handicap: app.handicap, flip: app.flip, moves: app.moves, tsume: app.tsume ? app.tsume.idx : null },
       }));
     } catch (e) { /* 保存できない環境でも遊べる */ }
   }
@@ -140,12 +145,21 @@
     $('btn-menu').addEventListener('click', () => { $('btn-resign').disabled = !canResign(); $('dlg-menu').showModal(); });
     $('btn-guide').addEventListener('click', () => $('dlg-guide').showModal());
     $('btn-hint').addEventListener('click', onHint);
+    $('btn-tsume').addEventListener('click', openTsumeList);
+    $('btn-ts-retry').addEventListener('click', () => { if (app.tsume) startTsume(app.tsume.idx, []); });
+    $('btn-ts-answer').addEventListener('click', () => { if (app.tsume && !app.tsume.demo) tsumeResult('answer'); });
+    $('dlg-tsume').addEventListener('close', () => {
+      const v = $('dlg-tsume').returnValue;
+      if (/^\d+$/.test(v)) startTsume(+v, []);
+    });
+    $('dlg-tsume-result').addEventListener('close', () => onTsumeResult($('dlg-tsume-result').returnValue));
     $('btn-undo').addEventListener('click', onUndo);
 
     $('dlg-menu').addEventListener('close', () => {
       const v = $('dlg-menu').returnValue;
       if (v === 'new') openNew(false);
       else if (v === 'howto') $('dlg-howto').showModal();
+      else if (v === 'tsume') openTsumeList();
       else if (v === 'guide') $('dlg-guide').showModal();
       else if (v === 'settings') openSettings();
       else if (v === 'resign') onResign();
@@ -190,9 +204,12 @@
 
     const saved = load();
     if (saved && saved.settings) Object.assign(app.settings, saved.settings);
+    if (saved && saved.tsumeDone) app.tsumeDone = saved.tsumeDone;
     applySettings();
     const g = saved && saved.game;
-    if (g && Array.isArray(g.moves)) {
+    if (g && g.mode === 'tsume' && PROBS[g.tsume]) {
+      startTsume(g.tsume, g.moves || []);
+    } else if (g && Array.isArray(g.moves)) {
       app.mode = g.mode === 'two' ? 'two' : 'cpu';
       app.human = g.human || [true, false];
       app.level = AI.LEVELS[g.level] ? g.level : 'easy';
@@ -245,6 +262,8 @@
   function startGame(o, silent) {
     app.token++;
     app.busy = false;
+    app.tsume = null;
+    document.body.classList.remove('tsume-mode');
     app.mode = o.mode;
     app.level = o.level || 'easy';
     app.handicap = o.handicap || 'none';
@@ -270,7 +289,7 @@
   }
 
   function rebuild(moves) {
-    let s = E.newGame(gameOpts());
+    let s = app.mode === 'tsume' ? tsumeStart(app.tsume.idx) : E.newGame(gameOpts());
     app.states = [s];
     app.moves = [];
     for (const m of moves) {
@@ -306,10 +325,11 @@
   // ---------- 状態の問い合わせ ----------
 
   function humanTurn() { return app.G.winner === null && app.human[app.G.turn] && !app.busy; }
-  function canResign() { return app.G.winner === null && app.human[app.G.turn] && !app.busy && app.G.ply > 0; }
+  function canResign() { return app.mode !== 'tsume' && app.G.winner === null && app.human[app.G.turn] && !app.busy && app.G.ply > 0; }
 
   function playerName(side) {
     if (app.mode === 'two') return side === 0 ? 'あお' : 'あか';
+    if (app.mode === 'tsume') return side === 0 ? 'あなた' : '王さま';
     return app.human[side] ? 'あなた' : 'CPU';
   }
 
@@ -320,6 +340,7 @@
     for (const m of app.legal) {
       const ok = sel.kind === 'board' ? E.mFrom(m) === sel.sq : sel.kind === 'hand' && sel.side === app.G.turn && E.mDrop(m) === sel.t;
       if (!ok) continue;
+      if (app.mode === 'tsume' && !givesCheck(app.G, m)) continue; // 詰将棋は王手だけ
       const to = E.mTo(m);
       if (!app.targets.has(to)) app.targets.set(to, []);
       app.targets.get(to).push(m);
@@ -376,7 +397,7 @@
       if (E.canPromoteType(t)) zoneSide = G.turn;
     }
     const kingInCheck = G.inCheck ? E.kingSq(G.board, G.turn) : -1;
-    const showDanger = app.settings.danger && humanTurn();
+    const showDanger = app.settings.danger && humanTurn() && app.mode !== 'tsume';
     const hintFrom = app.hint !== null && E.mFrom(app.hint) < 81 ? E.mFrom(app.hint) : -1;
     const hintTo = app.hint !== null ? E.mTo(app.hint) : -1;
     for (let sq = 0; sq < E.N; sq++) {
@@ -416,6 +437,10 @@
       el.className = `player s${side}${active ? ' active' : ''}${id === 'player-top' ? ' top' : ''}`;
       let h = `<div class="pname"><b><i class="dot s${side}"></i>${playerName(side)}</b><small>${E.SIDES[side].name}</small></div><div class="hand">`;
       let any = false;
+      if (app.mode === 'tsume' && side === 1) {
+        el.innerHTML = h + '<span class="empty">もちごま：のこりの こま ぜんぶ</span></div>';
+        continue;
+      }
       for (const t of E.HAND_ORDER) {
         const n = G.hands[side * 8 + t];
         if (!n) continue;
@@ -435,6 +460,22 @@
     const el = $('status');
     let cls = 's' + G.turn, text;
     const who = playerName(G.turn);
+    const ts = app.tsume;
+    if (ts) {
+      const pr = PROBS[ts.idx];
+      const left = pr.moves - G.ply;
+      if (ts.demo) { cls += ' hint'; text = 'こたえを ならべているよ…'; }
+      else if (G.winner === 0) { cls = 'end'; text = `<b>せいかい！</b> ${pr.moves}手で つかまえたよ`; }
+      else if (ts.failed && G.turn === 0) { cls += ' check'; text = '<b>ざんねん！</b> 王さまに にげられちゃった。「まった」で もどって もういちど！'; }
+      else if (!app.human[G.turn]) { cls += ' think'; text = '王さまが にげる ところを さがしているよ<span class="dots"><i></i><i></i><i></i></span>'; }
+      else if (app.hint !== null) { cls += ' hint'; text = `ヒント：<b>${E.moveText(G, app.hint)}</b> ひかっている ところを タッチしてね`; }
+      else if (app.sel && humanTurn()) { text = app.targets.size ? '<span class="lg lg-dot"></span> に うごかすと 王手に なるよ' : 'この こまでは 王手が できないよ'; }
+      else { text = `<b>第${ts.idx + 1}問（${pr.moves}手詰）</b> のこり ${left}手。王手を つづけて つかまえよう！`; }
+      el.className = 'status ' + cls;
+      const last = G.last ? `<span class="lastmv">${playerName(G.last.side)}：${G.kifu[G.kifu.length - 1]}</span>` : `<span class="lastmv">「${pr.title}」</span>`;
+      el.innerHTML = `<span class="msg">${text}</span>${last}`;
+      return;
+    }
     if (G.winner !== null) {
       cls = 'end';
       text = G.winner === -1 ? 'ひきわけ' : `${playerName(G.winner)}の かち！`;
@@ -604,7 +645,7 @@
     if (!p) {
       app.sel = null;
     } else if (app.sel && (app.sel.kind === 'board' || app.sel.kind === 'look') && app.sel.sq === sq) {
-      app.sel = null;
+      if (app.hint === null) app.sel = null; // ヒントで選んだ駒は、タッチしても選んだまま
     } else if (humanTurn() && E.sideOf(p) === G.turn) {
       app.sel = { kind: 'board', sq };
     } else {
@@ -653,6 +694,11 @@
     app.hint = null;
     app.legal = E.legalMoves(G);
     app.anim = { from: G.last.from, to: G.last.to, side: prev.turn, promote: G.last.promote, capture: G.last.captured };
+    if (app.tsume && prev.turn === 0 && G.winner === null && !app.tsume.demo) {
+      // 残りの手数で詰むか（詰まないなら、王さまが逃げたあとで「ざんねん」）
+      const left = PROBS[app.tsume.idx].moves - G.ply;
+      app.tsume.failed = left < 2 || !app.tsume.solver.defend(G.board.slice(), G.hands.slice(), left);
+    }
     save();
     render();
     animateMove();
@@ -674,6 +720,14 @@
   function onHint() {
     if (!humanTurn()) return;
     const G = app.G;
+    if (app.tsume) {
+      const sols = app.tsume.failed ? [] : app.tsume.solver.solutions(G.board.slice(), G.hands.slice(), PROBS[app.tsume.idx].moves - G.ply);
+      if (!sols.length) { toast('「まった」で もどってみよう'); return; }
+      const m = sols[0];
+      app.hint = m;
+      app.sel = E.mDrop(m) ? { kind: 'hand', side: 0, t: E.mDrop(m) } : { kind: 'board', sq: E.mFrom(m) };
+      return render();
+    }
     const btn = $('btn-hint');
     btn.disabled = true;
     btn.classList.add('busy');
@@ -717,6 +771,7 @@
     app.moves.length = k;
     app.states.length = k + 1;
     app.G = app.states[k];
+    if (app.tsume) app.tsume.failed = false;
     app.sel = null;
     app.hint = null;
     app.legal = E.legalMoves(app.G);
@@ -785,6 +840,16 @@
     render();
     const tk = app.token;
     const t0 = Date.now();
+    if (app.tsume) {
+      setTimeout(() => {
+        if (tk !== app.token || app.G !== G) return;
+        const d = app.tsume.solver.bestDefense(G.board.slice(), G.hands.slice(), PROBS[app.tsume.idx].moves);
+        app.busy = false;
+        commit(d.move);
+        if (app.tsume && app.tsume.failed) setTimeout(() => { if (tk === app.token) tsumeResult('fail'); }, 900);
+      }, app.tsume.demo ? 700 : 600);
+      return;
+    }
     think(G, app.level).then(m => {
       if (tk !== app.token || app.G !== G) return;
       setTimeout(() => {
@@ -800,6 +865,7 @@
     const G = app.G;
     app.busy = false;
     render();
+    if (app.tsume) return app.tsume.demo ? tsumeDemoEnd() : tsumeResult('solved');
     let title, text;
     const solo = app.mode === 'cpu';
     const reason = {
@@ -834,6 +900,141 @@
     $('result-text').textContent = text;
     $('btn-result-undo').hidden = !canUndo();
     setTimeout(() => { if (!document.querySelector('dialog[open]')) $('dlg-result').showModal(); }, 700);
+  }
+
+  // ---------- 詰将棋 ----------
+
+  function givesCheck(G, m) {
+    const b = G.board.slice(), h = G.hands.slice();
+    E.make(b, h, G.turn, m);
+    return E.inCheck(b, 1 - G.turn);
+  }
+
+  function tsumeStart(idx) {
+    const pos = E.parseSfen(PROBS[idx].sfen);
+    TS.fillDefenderHand(pos.board, pos.hands);
+    return E.fromPosition(pos.board, pos.hands, 0);
+  }
+
+  function startTsume(idx, moves) {
+    app.token++;
+    app.busy = false;
+    app.mode = 'tsume';
+    app.human = [true, false];
+    app.flip = false;
+    app.tsume = { idx, solver: new TS.Solver(), failed: false, demo: false };
+    document.body.classList.add('tsume-mode');
+    rebuild([]);
+    for (const m of moves || []) {
+      // 保存されていた途中の手を、正解判定つきでもう一度たどる
+      if (app.G.winner !== null || !app.legal.includes(m)) break;
+      app.G = E.apply(app.G, m);
+      app.states.push(app.G);
+      app.moves.push(m);
+      app.legal = E.legalMoves(app.G);
+    }
+    if (app.G.turn === 1) { app.moves.pop(); app.states.pop(); app.G = app.states[app.states.length - 1]; app.legal = E.legalMoves(app.G); }
+    $('kifu').innerHTML = '';
+    renderLabels();
+    save();
+    render();
+  }
+
+  function openTsumeList() {
+    const done = Object.keys(app.tsumeDone).length;
+    let h = `<p class="ts-count">クリア <b>${done}</b> / ${PROBS.length}もん</p>`;
+    for (const n of [1, 3, 5]) {
+      h += `<h3>${n}手詰（${['', 'まずは ここから', '', 'すこし むずかしい', '', 'チャレンジ'][n]}）</h3><div class="ts-grid">`;
+      PROBS.forEach((p, i) => {
+        if (p.moves !== n) return;
+        const ok = app.tsumeDone[i];
+        h += `<button type="submit" value="${i}" class="ts-btn${ok ? ' done' : ''}${app.tsume && app.tsume.idx === i ? ' cur' : ''}">` +
+          `<b>${i + 1}</b><small>${p.title}</small>${ok ? '<i>★</i>' : ''}</button>`;
+      });
+      h += '</div>';
+    }
+    $('tsume-list').innerHTML = h;
+    $('dlg-tsume').showModal();
+  }
+
+  function kifuHTML(text) {
+    return text.split(' ').map(k => `<span class="${k[0] === '▲' ? 's0' : 's1'}">${k}</span>`).join(' ');
+  }
+
+  // kind: 'solved' | 'fail' | 'answer'
+  function tsumeResult(kind) {
+    const idx = app.tsume.idx, pr = PROBS[idx];
+    if (kind === 'solved') {
+      app.tsumeDone[idx] = true;
+      save();
+      sound('win');
+      confetti();
+    } else if (kind === 'fail') {
+      sound('lose');
+    }
+    const title = { solved: 'せいかい！ おみごと！', fail: 'ざんねん…', answer: `第${idx + 1}問の こたえ` }[kind];
+    let h = `<h2 class="${kind === 'solved' ? 'win' : kind === 'fail' ? 'lose' : ''}">${title}</h2>`;
+    h += `<p class="ts-sub">第${idx + 1}問「${pr.title}」（${pr.moves}手詰）</p>`;
+    if (kind === 'fail') {
+      h += '<p>王さまに にげられちゃった。「まった」で もどるか、もういちど はじめから やってみよう。どうしても わからない ときは「こたえを みる」を おしてね。</p>';
+    } else {
+      h += `<div class="ts-answer">こたえ：${kifuHTML(pr.answer)}</div><p class="ts-text">${pr.text}</p>`;
+      if (pr.traps.length) {
+        h += '<div class="ts-traps"><b>まちがえやすい 手</b><ul>' +
+          pr.traps.map(([a, d]) => `<li>${kifuHTML(a)} → ${kifuHTML(d)} で にげられちゃう</li>`).join('') + '</ul></div>';
+      }
+    }
+    const btn = (v, label, cls) => `<button type="submit" value="${v}"${cls ? ` class="${cls}"` : ''}>${label}</button>`;
+    let b = '';
+    if (kind === 'solved') b = btn('list', 'もんだい いちらん') + (idx + 1 < PROBS.length ? btn('next', 'つぎの もんだい', 'primary') : '');
+    else if (kind === 'fail') b = btn('undo', 'まった') + btn('answer', 'こたえを みる') + btn('retry', 'もういちど', 'primary');
+    else b = btn('close', 'とじる') + btn('demo', 'こたえを ならべる', 'primary');
+    $('tsume-result').innerHTML = h + `<div class="dlg-buttons">${b}</div>`;
+    setTimeout(() => {
+      if (document.querySelector('dialog[open]')) return;
+      $('dlg-tsume-result').showModal();
+    }, kind === 'solved' ? 700 : 100);
+  }
+
+  function onTsumeResult(v) {
+    if (!app.tsume) return;
+    const idx = app.tsume.idx;
+    if (v === 'next') startTsume(idx + 1, []);
+    else if (v === 'list') openTsumeList();
+    else if (v === 'retry') startTsume(idx, []);
+    else if (v === 'undo') onUndo();
+    else if (v === 'answer') tsumeResult('answer');
+    else if (v === 'demo') tsumeDemo();
+  }
+
+  // こたえを盤に ならべる
+  function tsumeDemo() {
+    const idx = app.tsume.idx;
+    startTsume(idx, []);
+    const pos = E.parseSfen(PROBS[idx].sfen);
+    TS.fillDefenderHand(pos.board, pos.hands);
+    const line = app.tsume.solver.mainLine(pos.board, pos.hands, PROBS[idx].moves).line;
+    app.tsume.demo = true;
+    app.busy = true;
+    render();
+    const tk = app.token;
+    const step = k => {
+      if (tk !== app.token) return;
+      if (k >= line.length) return;
+      app.busy = false;
+      app.human = [true, true]; // 両方とも ここで指す
+      commit(line[k]);
+      app.busy = app.G.winner === null;
+      render();
+      setTimeout(() => step(k + 1), 1100);
+    };
+    setTimeout(() => step(0), 600);
+  }
+  function tsumeDemoEnd() {
+    app.tsume.demo = false;
+    app.human = [true, false];
+    render();
+    toast('これで つみ！');
   }
 
   window.ShogiApp = app; // デバッグ用

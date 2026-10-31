@@ -4,6 +4,7 @@
 .wrangler
 node_modules
 test
+tools
 README.md
 wrangler.jsonc
 .assetsignore

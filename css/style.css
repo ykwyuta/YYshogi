@@ -395,9 +395,42 @@ button.danger { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%
   .card-dg svg { width: 120px; height: 120px; }
   #kifu { max-height: 320px; }
 }
+/* ---------- 詰将棋 ---------- */
+.ts-controls { display: none; }
+body.tsume-mode .ts-controls { display: flex; }
+.big.small { min-height: 42px; font-size: 15px; }
+.tsume-chip { background: #fef3c7; border-color: #fbbf24; }
+body.tsume-mode .tsume-chip { background: var(--warn); color: #3b2a1a; }
+.ts-count { font-size: 15px !important; }
+.ts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.ts-btn {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0;
+  padding: 6px 8px; min-height: 54px; border-radius: 12px; text-align: left;
+  border: 2px solid var(--panel-line); background: var(--panel);
+}
+.ts-btn b { font-size: 17px; font-weight: 900; line-height: 1.1; }
+.ts-btn small { font-size: 11px; color: var(--muted); line-height: 1.3; }
+.ts-btn i { position: absolute; top: 4px; right: 6px; font-style: normal; color: #f59e0b; font-size: 16px; }
+.ts-btn.done { background: #fef3c7; border-color: #fbbf24; }
+.ts-btn.cur { outline: 3px solid var(--p0); }
+.ts-result h2 { text-align: center; font-size: 24px; }
+.ts-result h2.win { color: #b45309; }
+.ts-result h2.lose { color: var(--muted); }
+.ts-sub { text-align: center; color: var(--muted); font-size: 13px !important; }
+.ts-answer { margin: 10px 0 6px; padding: 8px 12px; border-radius: 12px; background: var(--panel); border: 2px solid var(--panel-line); font-weight: 900; font-size: 16px; }
+.ts-answer .s0, .ts-traps .s0 { color: var(--p0); }
+.ts-answer .s1, .ts-traps .s1 { color: var(--p1); }
+.ts-text { line-height: 1.7 !important; }
+.ts-traps { margin-top: 8px; padding: 8px 12px; border-radius: 12px; background: #fff7ed; color: #3b2a1a; font-size: 13.5px; }
+.ts-traps ul { margin: 4px 0 0; }
+
+@media (max-width: 480px) {
+  .t-sub { display: none; }
+  .chip { padding: 6px 9px; font-size: 12px; }
+}
 @media (max-width: 370px) {
   .t-sub { display: none; }
-  .chip { padding: 6px 10px; font-size: 12px; }
+  .chip { padding: 5px 7px; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

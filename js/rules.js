@@ -424,12 +424,79 @@
     return s;
   }
 
+  // ---- SFEN（局面の文字表記）----
+  // 例：'lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1'
+  const SFEN_CH = ' PLNSBRGK';
+
+  function toSfen(board, hands, turn) {
+    const rows = [];
+    for (let y = 0; y < 9; y++) {
+      let r = '', empty = 0;
+      for (let x = 0; x < 9; x++) {
+        const p = board[y * 9 + x];
+        if (!p) { empty++; continue; }
+        if (empty) { r += empty; empty = 0; }
+        const t = typeOf(p);
+        const c = (t > PROMO ? '+' : '') + SFEN_CH[baseType(t)];
+        r += p > 0 ? c : c.toLowerCase();
+      }
+      rows.push(r + (empty || ''));
+    }
+    let hs = '';
+    for (const side of [0, 1]) {
+      for (const t of HAND_ORDER) {
+        const n = hands[side * 8 + t];
+        if (!n) continue;
+        hs += (n > 1 ? n : '') + (side === 0 ? SFEN_CH[t] : SFEN_CH[t].toLowerCase());
+      }
+    }
+    return `${rows.join('/')} ${turn === 0 ? 'b' : 'w'} ${hs || '-'} 1`;
+  }
+
+  function parseSfen(sfen) {
+    const [bd, tn, hd] = sfen.trim().split(/\s+/);
+    const board = new Int8Array(N), hands = new Int8Array(16);
+    bd.split('/').forEach((row, y) => {
+      let x = 0, promo = false;
+      for (const c of row) {
+        if (c === '+') { promo = true; continue; }
+        if (/\d/.test(c)) { x += +c; continue; }
+        let t = SFEN_CH.indexOf(c.toUpperCase());
+        if (promo) t += PROMO;
+        board[y * 9 + x] = c === c.toUpperCase() ? t : -t;
+        x++; promo = false;
+      }
+    });
+    if (hd && hd !== '-') {
+      const re = /(\d*)([PLNSBRGKplnsbrgk])/g;
+      let mm;
+      while ((mm = re.exec(hd))) {
+        const side = mm[2] === mm[2].toUpperCase() ? 0 : 1;
+        hands[side * 8 + SFEN_CH.indexOf(mm[2].toUpperCase())] += mm[1] ? +mm[1] : 1;
+      }
+    }
+    return { board, hands, turn: tn === 'w' ? 1 : 0 };
+  }
+
+  // 任意の局面から始める（詰将棋など）
+  function fromPosition(board, hands, turn) {
+    const s = {
+      board: Int8Array.from(board), hands: Int8Array.from(hands), turn, ply: 0,
+      handicap: 'none', handicapSide: 1,
+      keys: [], checks: [], kifu: [], last: null, inCheck: false,
+      winner: null, result: null,
+    };
+    s.inCheck = inCheck(s.board, turn);
+    s.keys.push(posKey(s));
+    return s;
+  }
+
   global.Engine = {
     SIZE, N, MAX_PLY, FU, KY, KE, GI, KA, HI, KI, OU, PROMO, PROMOTE_BIT,
     SIDES, DIRS, PIECES, HAND_ORDER, STEP, SLIDE, HANDICAPS, HANDICAP_ORDER,
     inB, sideOf, typeOf, baseType, canPromoteType, inZone, deadEnd, pieceKanji, sqName,
     mFrom, mTo, mPromote, mDrop, encode, dropMove,
     genMoves, reachFrom, attacked, attackers, kingSq, inCheck, make, unmake, legalRaw, legalMoves,
-    newGame, clone, posKey, moveText, apply, resign, replay,
+    newGame, clone, posKey, moveText, apply, resign, replay, toSfen, parseSfen, fromPosition,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
